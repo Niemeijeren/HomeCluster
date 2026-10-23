@@ -1,0 +1,30 @@
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: daily
+  namespace: velero
+spec:
+  # Cron in the node's timezone, which is UTC.
+  schedule: "0 2 * * *"
+  template:
+    ttl: 720h # keep 30 days
+    storageLocation: default
+    # Opt-out instead of opt-in, so a new app's namespace is backed up without
+    # extra work. Everything listed here is either rebuilt from git or holds
+    # cluster credentials.
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - argocd
+      - cert-manager
+      - velero
+    # Backup tarballs aren't encrypted client-side (only the Kopia volume data
+    # is). Leave Secrets out: SealedSecrets are backed up, and the controller
+    # decrypts them again after a restore.
+    excludedResources:
+      - secrets
+    # Back up every pod volume with Kopia unless the pod opts out with
+    # the annotation backup.velero.io/backup-volumes-excludes.
+    defaultVolumesToFsBackup: true
+    snapshotVolumes: false

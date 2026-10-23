@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  labels:
+    app: jellyfin
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: the config PVC is ReadWriteOnce and Jellyfin
+  # isn't built to run two instances against the same config. A rolling update
+  # would start the new pod next to the old one.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jellyfin
+  template:
+    metadata:
+      labels:
+        app: jellyfin
+      annotations:
+        # Velero backs up every pod volume by default. The cache is disposable, and
+        # the media hostPath is too big (photos/documents go via apps/media-backup).
+        backup.velero.io/backup-volumes-excludes: cache,media
+    spec:
+      containers:
+        - name: jellyfin
+          # Pinned to the exact build that was running under :latest (sha256:357724bf…).
+          # Upgrade by changing this tag in git, never by restarting the pod.
+          image: jellyfin/jellyfin:12.2.20261005-225228
+          ports:
+            - name: http
+              containerPort: 8096
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: cache
+              mountPath: /cache
+            - name: media
+              mountPath: /media
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: jellyfin-config-pvc
+        - name: cache
+          emptyDir: {}
+        - name: media
+          hostPath:
+            path: /srv/media
+            type: Directory

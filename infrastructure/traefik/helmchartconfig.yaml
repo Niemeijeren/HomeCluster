@@ -1,0 +1,23 @@
+# Overrides for the Traefik that k3s bundles (HelmChart kube-system/traefik).
+# Replaces the old traefik-config.yaml in /var/lib/rancher/k3s/server/manifests,
+# which set hostNetwork and an `expose: true` that chart v40 rejects.
+# No hostNetwork needed: k3s ServiceLB already binds 80/443 on the node and
+# forwards to Traefik's Service.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+    logs:
+      access:
+        enabled: true

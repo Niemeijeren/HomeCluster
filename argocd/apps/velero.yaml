@@ -1,0 +1,80 @@
+# Velero: backs up the PVCs of the apps (the files inside them, via Kopia) to Cloudflare R2.
+# Cluster objects need no backup: Argo CD rebuilds them from this repo.
+# Credentials, the Kopia repo password and the Schedule live in infrastructure/velero.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  project: default
+  source:
+    repoURL: https://vmware-tanzu.github.io/helm-charts
+    chart: velero
+    targetRevision: 12.2.1
+    helm:
+      releaseName: velero
+      valuesObject:
+        # Velero ships without storage drivers. R2 speaks the S3 API, so the AWS plugin works.
+        # Plugin v1.14 is the release paired with Velero 1.18.
+        initContainers:
+          - name: velero-plugin-for-aws
+            image: velero/velero-plugin-for-aws:v1.14.4
+            imagePullPolicy: IfNotPresent
+            volumeMounts:
+              - mountPath: /target
+                name: plugins
+        # Argo CD applies the chart's crds/ folder itself; the chart's CRD-upgrade
+        # Job (a Helm hook with its own kubectl image) is redundant here.
+        upgradeCRDs: false
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
+        # The node-agent DaemonSet reads volumes from /var/lib/kubelet/pods on the
+        # host and uploads them with Kopia. That's "file-system backup": the only
+        # option here, because local-path has no CSI snapshot support.
+        deployNodeAgent: true
+        nodeAgent:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+        # No cloud disk snapshots on a bare-metal node.
+        snapshotsEnabled: false
+        credentials:
+          # SealedSecret in infrastructure/velero. Key `cloud` holds an AWS-style credentials file.
+          existingSecret: velero-r2-credentials
+        configuration:
+          uploaderType: kopia
+          backupStorageLocation:
+            - name: default
+              default: true
+              provider: aws
+              bucket: homecluster-backups
+              # Velero insists on owning its prefix; the media Kopia repo lives under kopia/.
+              prefix: velero
+              config:
+                region: auto
+                s3Url: https://ACCOUNT_ID.r2.cloudflarestorage.com
+                s3ForcePathStyle: "true"
+                # The AWS SDK's default request checksums aren't supported by every
+                # S3-compatible store; turning them off avoids R2 upload errors.
+                checksumAlgorithm: ""
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The CRDs are too big for client-side apply's last-applied annotation.
+      - ServerSideApply=true

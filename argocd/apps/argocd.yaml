@@ -1,0 +1,31 @@
+# Argo CD manages its own Helm release. Bump targetRevision here to upgrade.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.10.0
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/bootstrap/argocd-values.yaml
+    - repoURL: https://github.com/your-github-user/HomeCluster.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      # Never auto-prune Argo CD's own resources: a bad commit could delete the controller.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

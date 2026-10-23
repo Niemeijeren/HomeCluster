@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin-service
+spec:
+  # ClusterIP only: all traffic enters through Traefik (TLS). This was a
+  # LoadBalancer, which exposed plain-HTTP :8096 directly on the node.
+  type: ClusterIP
+  selector:
+    app: jellyfin
+  ports:
+    - name: http
+      port: 8096
+      targetPort: http

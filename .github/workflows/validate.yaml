@@ -1,0 +1,42 @@
+# Catches broken manifests before Argo CD does: every kustomize folder must
+# build, and every resource (CRDs included) must match its schema.
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFORM_VERSION: v0.6.7
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No plain Secrets in git
+        run: |
+          if grep -rlE '^kind: Secret$' --include='*.yaml' .; then
+            echo "Plain Secret found. Use a SealedSecret (scripts/seal-secrets.sh)." >&2
+            exit 1
+          fi
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: Build and validate
+        run: |
+          {
+            for dir in infrastructure/* apps/*; do
+              kubectl kustomize "$dir"
+              echo ---
+            done
+            for f in argocd/apps/*.yaml bootstrap/root-app.yaml; do
+              cat "$f"
+              echo ---
+            done
+          } | kubeconform -strict -summary \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'

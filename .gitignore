@@ -1,0 +1,8 @@
+# never commit secrets
+*.key
+*_key
+sealing-key*.yaml
+*.secret.yaml
+.env
+# your local values for scripts/configure.sh
+config.env

@@ -1,0 +1,22 @@
+# Helm values for Argo CD. Used once by `helm install` (bootstrap), and after
+# that by the argocd Application, so Argo CD manages its own upgrades.
+global:
+  domain: argocd.example.com
+
+configs:
+  params:
+    # Traefik terminates TLS; argocd-server serves plain HTTP inside the cluster.
+    server.insecure: true
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    tls: true
+
+# Single-user homelab: no SSO for now. Log in with the admin user.
+dex:
+  enabled: false

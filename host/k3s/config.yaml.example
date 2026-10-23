@@ -1,0 +1,6 @@
+# Copy to /etc/rancher/k3s/config.yaml before installing k3s.
+# The node registers with its Tailscale IP, so the cluster (and every Ingress)
+# is only reachable over the tailnet. See host/systemd for the boot-order fix
+# this requires.
+node-ip: 100.x.y.z            # `tailscale ip -4` on this machine
+bind-address: 0.0.0.0

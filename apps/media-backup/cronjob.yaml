@@ -1,0 +1,90 @@
+# Backs up the irreplaceable part of /srv/media (photos, documents) to R2 with Kopia.
+# Velero can't do this: it only backs up volumes that belong to a PVC, and this is a hostPath.
+# Movies and TV are left out on purpose (big, and can be fetched again).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: media-backup
+spec:
+  # UTC, one hour after the Velero schedule so the two don't compete for bandwidth.
+  schedule: "0 3 * * *"
+  # Never start a second run while a long first upload is still going.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            # UID/GID that owns the media files on the host (e.g. the Samba user).
+            runAsUser: 1000
+            runAsGroup: 1000
+          containers:
+            - name: kopia
+              image: kopia/kopia:0.23.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # Kopia records snapshots under user@host. Pods get random hostnames,
+                  # so pin both, or every run would look like a new machine and start over.
+                  REPO="s3 --bucket=$S3_BUCKET --prefix=kopia/media/
+                    --endpoint=$S3_ENDPOINT --region=auto
+                    --override-hostname=homecluster --override-username=media-backup"
+                  # Connect to the repository; on the very first run it doesn't exist yet.
+                  # `create` refuses to overwrite an existing repository, so this is safe.
+                  kopia repository connect $REPO || kopia repository create $REPO
+                  # Retention, stored in the repository itself. Kopia prunes and runs
+                  # maintenance automatically after snapshots.
+                  kopia policy set --global \
+                    --keep-latest=10 --keep-daily=14 --keep-weekly=8 \
+                    --keep-monthly=12 --keep-annual=3
+                  kopia snapshot create /media/photos /media/documents
+                  kopia snapshot list --all
+              env:
+                - name: S3_BUCKET
+                  value: homecluster-backups
+                # Any S3-compatible store works; this is the Cloudflare R2 form.
+                - name: S3_ENDPOINT
+                  value: ACCOUNT_ID.r2.cloudflarestorage.com
+                # Kopia's defaults point at /app, which is owned by root in the image.
+                - name: KOPIA_CONFIG_PATH
+                  value: /tmp/kopia/repository.config
+                - name: KOPIA_CACHE_DIRECTORY
+                  value: /tmp/kopia/cache
+                - name: KOPIA_LOG_DIR
+                  value: /tmp/kopia/logs
+              # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (read by Kopia's S3 backend)
+              # and KOPIA_PASSWORD (encrypts the repository).
+              envFrom:
+                - secretRef:
+                    name: media-backup-credentials
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 2Gi
+              volumeMounts:
+                - name: photos
+                  mountPath: /media/photos
+                  readOnly: true
+                - name: documents
+                  mountPath: /media/documents
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp/kopia
+          volumes:
+            - name: photos
+              hostPath:
+                path: /srv/media/photos
+                type: Directory
+            - name: documents
+              hostPath:
+                path: /srv/media/documents
+                type: Directory
+            - name: tmp
+              emptyDir: {}
