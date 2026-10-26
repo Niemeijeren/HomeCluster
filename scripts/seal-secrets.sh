@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Creates the four SealedSecrets this repo needs, encrypted with the public key
+# Creates the five SealedSecrets this repo needs, encrypted with the public key
 # of the sealed-secrets controller in your current kubectl context.
 # Plaintext never touches the disk: it is piped straight into kubeseal.
 # Needs: kubectl, kubeseal, openssl, and a running sealed-secrets controller.
@@ -22,6 +22,7 @@ seal() { # seal <namespace> <name> <output file> <kubectl create secret args...>
 CF_TOKEN=$(ask "Cloudflare API token (Zone:DNS:Edit on your domain)")
 S3_KEY_ID=$(ask "S3 access key ID (scoped to the backup bucket)")
 S3_SECRET=$(ask "S3 secret access key")
+HC_PING_KEY=$(ask "healthchecks.io project ping key (project Settings, API Access)")
 # Each Kopia repository gets its own random encryption password.
 VELERO_REPO_PW=$(openssl rand -base64 32)
 MEDIA_REPO_PW=$(openssl rand -base64 32)
@@ -41,6 +42,9 @@ seal media-backup media-backup-credentials apps/media-backup/credentials.sealed.
   --from-literal=AWS_ACCESS_KEY_ID="$S3_KEY_ID" \
   --from-literal=AWS_SECRET_ACCESS_KEY="$S3_SECRET" \
   --from-literal=KOPIA_PASSWORD="$MEDIA_REPO_PW"
+
+seal monitoring healthchecks apps/monitoring/healthchecks.sealed.yaml \
+  --from-literal=ping-key="$HC_PING_KEY"
 
 cat >&2 <<MSG
 

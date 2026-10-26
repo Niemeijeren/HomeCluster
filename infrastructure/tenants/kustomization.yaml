@@ -1,0 +1,8 @@
+# The boundary around each tenant app: its Namespace (with Pod Security), its
+# NetworkPolicies and its admission rules. Owned by the platform (project
+# default), never by the tenant's own Application, so whoever can deploy the
+# tenant can't loosen its limits.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - website

@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: media-backup
 resources:
+  - networkpolicy.yaml
   - cronjob.yaml
   # Encrypted with the sealed-secrets controller's public key (see README "Secrets").
   - credentials.sealed.yaml

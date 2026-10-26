@@ -1,0 +1,108 @@
+# Read-only and scoped to exactly what check.py reads: cluster-wide only for
+# what is cluster-wide (nodes, certificates in every namespace), namespaced
+# Roles for the rest. No Secrets, no writes. (The kustomization has no
+# `namespace:` on purpose: it would move these Roles into monitoring.)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-checks
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-checks
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [list]
+  - apiGroups: [cert-manager.io]
+    resources: [certificates]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-checks
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-checks
+subjects:
+  - kind: ServiceAccount
+    name: cluster-checks
+    namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-checks
+  namespace: argocd
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-checks
+  namespace: velero
+rules:
+  - apiGroups: [velero.io]
+    resources: [backups, backupstoragelocations]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-checks
+  namespace: media-backup
+rules:
+  # resourceNames works with get (not list): only this one CronJob.
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    resourceNames: [media-backup]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-checks
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-checks
+subjects:
+  - kind: ServiceAccount
+    name: cluster-checks
+    namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-checks
+  namespace: velero
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-checks
+subjects:
+  - kind: ServiceAccount
+    name: cluster-checks
+    namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-checks
+  namespace: media-backup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-checks
+subjects:
+  - kind: ServiceAccount
+    name: cluster-checks
+    namespace: monitoring

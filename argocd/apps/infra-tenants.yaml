@@ -1,0 +1,34 @@
+# The platform side of each tenant (Namespace, Pod Security, NetworkPolicies,
+# admission rules). In project default on purpose: the tenant's own
+# Application (project website) can't touch any of it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infra-tenants
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-github-user/HomeCluster.git
+    targetRevision: main
+    path: infrastructure/tenants
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    # Argo never retries a failed automated sync on the same commit by itself,
+    # so e.g. a cold rebuild where a CRD isn't there yet would stall until the
+    # next commit. Back off and retry instead. refresh: each attempt uses the
+    # latest commit, so a fix pushed mid-retry isn't locked out for ~30 min.
+    retry:
+      refresh: true
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+    automated:
+      # Pruning a Namespace deletes everything in it. Remove a tenant by hand.
+      prune: false
+      selfHeal: true

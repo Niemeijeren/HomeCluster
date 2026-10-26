@@ -4,7 +4,7 @@ metadata:
   name: website
   namespace: argocd
 spec:
-  project: default
+  project: website
   source:
     repoURL: https://github.com/your-github-user/HomeCluster.git
     targetRevision: main
@@ -13,8 +13,21 @@ spec:
     server: https://kubernetes.default.svc
     namespace: website
   syncPolicy:
+    # Argo never retries a failed automated sync on the same commit by itself,
+    # so e.g. a cold rebuild where a CRD isn't there yet would stall until the
+    # next commit. Back off and retry instead. refresh: each attempt uses the
+    # latest commit, so a fix pushed mid-retry isn't locked out for ~30 min.
+    retry:
+      refresh: true
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
+      # The Namespace comes from infra-tenants (platform-owned). Refuse to sync
+      # anything another Application already manages, instead of taking it over.
+      - FailOnSharedResource=true

@@ -48,7 +48,7 @@ Real problems from running this cluster, with the root cause and the fix.
 
 **Why.** Backups had reported `Completed` every night, but that only proves the upload worked. Nobody had shown the data could come back.
 
-**What I did.** I restored Portainer from last night's Velero backup into a scratch namespace (`namespaceMapping: {portainer: portainer-restore-test}`), next to the live app. All volume bytes came back. The restored Portainer reported that its admin user existed (`/api/users/admin/check` → 204), which proves it was the real data and not a fresh install. Then I deleted the scratch namespace.
+**What I did.** I restored Portainer (since removed from the cluster) from last night's Velero backup into a scratch namespace (`namespaceMapping: {portainer: portainer-restore-test}`), next to the live app. All volume bytes came back. The restored Portainer reported that its admin user existed (`/api/users/admin/check` → 204), which proves it was the real data and not a fresh install. Then I deleted the scratch namespace.
 
 **Gotchas.**
 - **Exclude Ingresses and cert-manager objects** (`excludedResources`) when restoring next to a live app. Otherwise the copy claims the same hostname, and cert-manager requests a duplicate certificate.

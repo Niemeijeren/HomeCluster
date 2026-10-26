@@ -1,0 +1,50 @@
+# Ingress hosts and Service IPs are shared across the cluster, even though the
+# objects that claim them are namespaced. Without this, a commit to
+# apps/website could claim argocd.example.com (Traefik prefers the longer
+# Host+Path rule) or open a LoadBalancer/externalIP. Built into Kubernetes
+# (ValidatingAdmissionPolicy, GA since 1.30); no extra controller.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: website-tenant
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [networking.k8s.io]
+        apiVersions: ["*"]
+        resources: [ingresses]
+        operations: [CREATE, UPDATE]
+      - apiGroups: [""]
+        apiVersions: ["*"]
+        resources: [services]
+        operations: [CREATE, UPDATE]
+  variables:
+    - name: allowedHosts
+      expression: "['example.com', 'site.example.com']"
+  validations:
+    - expression: >-
+        object.kind != 'Ingress' || (
+          !has(object.spec.defaultBackend) &&
+          has(object.spec.rules) &&
+          object.spec.rules.all(r, has(r.host) && r.host in variables.allowedHosts) &&
+          (!has(object.spec.tls) || object.spec.tls.all(t,
+            !has(t.hosts) || t.hosts.all(h, h in variables.allowedHosts))))
+      message: "website Ingresses may only use hosts example.com and site.example.com, and no default backend"
+    - expression: >-
+        object.kind != 'Service' || (
+          (!has(object.spec.type) || object.spec.type == 'ClusterIP') &&
+          (!has(object.spec.externalIPs) || size(object.spec.externalIPs) == 0))
+      message: "website Services must be ClusterIP without externalIPs"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: website-tenant
+spec:
+  policyName: website-tenant
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: website

@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# No `namespace:` here: rbac.yaml has Roles in other namespaces, and this
+# field would move them. Every object sets its namespace itself.
+resources:
+  - networkpolicy.yaml
+  - namespace.yaml
+  - rbac.yaml
+  - cronjob.yaml
+  - healthchecks.sealed.yaml
+configMapGenerator:
+  # The hash suffix makes every script change roll into the CronJob.
+  - name: cluster-checks
+    namespace: monitoring
+    files:
+      - check.py

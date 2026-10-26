@@ -2,7 +2,11 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: jellyfin
 resources:
+  - networkpolicy.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
+  # Optional: Jellyfin for one LAN device without Tailscale (e.g. a TV).
+  # Set LAN_CLIENT_IP in config.env, run configure.sh, then uncomment.
+  # - service-lan.yaml
   - ingress.yaml

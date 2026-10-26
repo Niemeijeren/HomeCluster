@@ -1,0 +1,16 @@
+# Same provisioner as k3s's default `local-path`, but the PV (and its folder on
+# disk) survives when its PVC is deleted, e.g. by deleting a namespace during a
+# restore. Use this for every new PVC that holds data. A Released PV must be
+# cleaned up by hand (`kubectl delete pv` + the folder under
+# /var/lib/rancher/k3s/storage) once you're sure it's not needed.
+# The older Jellyfin PVC stays on `local-path`, because storageClassName is
+# immutable; its PV was patched to Retain instead.
+# Trade-off: deleted data isn't gone. For personal data (poll answers, emails)
+# purge the Released PV and its folder deliberately when it must be deleted.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer

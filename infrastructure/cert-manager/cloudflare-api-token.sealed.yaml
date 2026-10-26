@@ -12,3 +12,4 @@ spec:
     metadata:
       name: cloudflare-api-token-secret
       namespace: cert-manager
+    type: Opaque

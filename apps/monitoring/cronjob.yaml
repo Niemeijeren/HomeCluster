@@ -1,0 +1,63 @@
+# Runs check.py every hour; healthchecks.io alerts when a check fails or when
+# the pings stop. Not armed until set up: the checks are created by the first
+# ping, then each needs period 1 hour, grace 1 hour and the email integration
+# in the healthchecks.io UI (see README "Monitoring").
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cluster-checks
+  namespace: monitoring
+spec:
+  # Off the hour, so it doesn't run in the same minute as the 02:00/03:00 backups.
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          serviceAccountName: cluster-checks
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            # The python image runs as root by default; any uid works.
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: check
+              # Pinned by digest: this pod holds the ping key.
+              image: python:3.14.9-alpine3.23@sha256:a3d4eff2e4a3de12d9709b3e80cee788109d7292955972a83f5fff81b06c2e95
+              command: ["python3", "/checks/check.py"]
+              env:
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+                - name: HC_PING_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: healthchecks
+                      key: ping-key
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - name: checks
+                  mountPath: /checks
+                  readOnly: true
+          volumes:
+            - name: checks
+              configMap:
+                name: cluster-checks

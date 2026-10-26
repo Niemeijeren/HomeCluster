@@ -10,12 +10,25 @@ spec:
   schedule: "0 3 * * *"
   # Never start a second run while a long first upload is still going.
   concurrencyPolicy: Forbid
+  # Skip a run that couldn't start within an hour (e.g. node down at 03:00)
+  # instead of starting it late.
+  startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       backoffLimit: 2
+      # With Forbid, a hung run (disk missing → pod stuck in ContainerCreating,
+      # stalled upload) would block every later run without ever failing.
+      # Kopia checkpoints large uploads, so a killed run resumes next time: the
+      # first seed of a big library shows a few nights of DeadlineExceeded, which
+      # is expected (or seed once with a manual Job and a longer deadline).
+      activeDeadlineSeconds: 21600
       template:
+        metadata:
+          annotations:
+            # hostPath and scratch volumes, nothing for Velero to back up.
+            backup.velero.io/backup-volumes-excludes: photos,documents,tmp
         spec:
           restartPolicy: Never
           securityContext:

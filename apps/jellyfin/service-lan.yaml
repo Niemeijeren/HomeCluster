@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyfin-lan
+spec:
+  # Deliberate exception to "tailnet only": the living-room TV (no Tailscale
+  # client) plays from http://192.168.1.10:8096. Plain HTTP on
+  # the home LAN only, so give the TV its own non-admin Jellyfin user.
+  # ServiceLB publishes 8096 as a hostPort on every node address and checks
+  # these source ranges (SRC_RANGES); hostPort DNATs bypass ufw, so this list
+  # is the actual firewall. Needs a DHCP reservation for the ProDesk's LAN IP.
+  type: LoadBalancer
+  # No NodePorts: source ranges don't apply to them, so they'd be open to all.
+  allocateLoadBalancerNodePorts: false
+  loadBalancerSourceRanges:
+    # The TV's LAN IP. Needs a DHCP reservation.
+    - 192.0.2.1/32
+  selector:
+    app: jellyfin
+  ports:
+    - name: http
+      port: 8096
+      targetPort: http

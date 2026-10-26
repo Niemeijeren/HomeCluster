@@ -1,0 +1,36 @@
+# Blast radius for the website. Its image tag will later be bumped by CI
+# (planned: GitHub Actions or Argo CD Image Updater), so whatever deploys
+# through this project may only touch namespace website, with a short list of
+# kinds, and nothing cluster-wide. Its Namespace (Pod Security), NetworkPolicies
+# and admission rules live in infrastructure/tenants/website, owned by the
+# platform, so the tenant can't loosen its own limits.
+# What this does NOT do: stop someone who can write anywhere in this repo
+# (argocd/apps/ is cluster-admin via root). The credential is the boundary, so
+# the CI write path must never hold a write key to this repo.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: website
+  namespace: argocd
+  annotations:
+    # Before the Application that uses it.
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  description: Public website (example.com), restricted to its own namespace
+  sourceRepos:
+    - https://github.com/your-github-user/HomeCluster.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: website
+  # Nothing cluster-scoped: no Namespace (it could adopt and prune any
+  # namespace), no ClusterRoleBinding, CRDs or webhooks.
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: apps, kind: Deployment}
+    - {group: "", kind: Service}
+    - {group: "", kind: ConfigMap}
+    # Hosts and Service types are checked by the admission policy in
+    # infrastructure/tenants/website/admission.yaml.
+    - {group: networking.k8s.io, kind: Ingress}
+    # For the Tunnel token / Access audience later.
+    - {group: bitnami.com, kind: SealedSecret}

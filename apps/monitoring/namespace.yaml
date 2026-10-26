@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    # First namespace with Pod Security Admission enforced: the API server
+    # rejects any pod here that isn't "restricted" (non-root, no privilege
+    # escalation, all capabilities dropped, seccomp).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted

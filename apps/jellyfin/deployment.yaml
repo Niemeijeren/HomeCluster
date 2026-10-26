@@ -19,10 +19,49 @@ spec:
       labels:
         app: jellyfin
       annotations:
-        # Velero backs up every pod volume by default. The cache is disposable, and
-        # the media hostPath is too big (photos/documents go via apps/media-backup).
-        backup.velero.io/backup-volumes-excludes: cache,media
+        # Velero backs up every pod volume by default. The cache and /tmp are
+        # disposable, and the media hostPaths are too big (and fetchable again).
+        backup.velero.io/backup-volumes-excludes: cache,tmp,movies,tv
     spec:
+      # Jellyfin never talks to the Kubernetes API.
+      automountServiceAccountToken: false
+      # Non-root, as a uid that exists nowhere on the host. Jellyfin is the most
+      # exposed app here (LAN for the TV, plugins, ffmpeg); after a container
+      # breakout a uid is a real host identity, and 1000 (the admin user) is in
+      # sudo/docker/lxd, i.e. root. Reads media as "other": files must stay
+      # world-readable (Samba's create mask), or Jellyfin won't see new ones.
+      securityContext:
+        runAsUser: 1500
+        runAsGroup: 1500
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # /config was created by root (Jellyfin ran as root until 2026-10-26), and
+        # a Velero restore brings back whatever owner the backup had. local-path
+        # volumes ignore fsGroup, so hand them to 1500 here. Idempotent and quick
+        # (~80 MB); only CHOWN, plus DAC_READ_SEARCH to walk dirs it doesn't own.
+        # GNU chown -R doesn't follow symlinks (-P), so a link planted in /config
+        # can't redirect it.
+        - name: fix-permissions
+          image: jellyfin/jellyfin:12.2.20261005-225228
+          command: ["chown", "-R", "1500:1500", "/config"]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_READ_SEARCH]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: jellyfin
           # Pinned to the exact build that was running under :latest (sha256:357724bf…).
@@ -31,6 +70,24 @@ spec:
           ports:
             - name: http
               containerPort: 8096
+          env:
+            # The root filesystem is read-only and uid 1500 has no home; .NET
+            # keeps its (per-pod, as before) data-protection keys under $HOME.
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # Gives a slow start (e.g. a database migration after an image bump)
+          # up to 10 minutes before liveness may restart the pod mid-migration.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /health
@@ -40,7 +97,6 @@ spec:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 60
             periodSeconds: 30
             failureThreshold: 5
           resources:
@@ -54,15 +110,32 @@ spec:
               mountPath: /config
             - name: cache
               mountPath: /cache
-            - name: media
-              mountPath: /media
+            - name: tmp
+              mountPath: /tmp
+            # Only the folders a library uses, read-only: a compromised Jellyfin
+            # can't delete or encrypt media, and never sees photos or documents.
+            # Metadata goes to /config (SaveLocalMetadata off). Movies has "save
+            # subtitles with media" on: subtitles added in the UI would fail
+            # (EROFS), so add them over Samba or untick that setting.
+            - name: movies
+              mountPath: /media/movies
+              readOnly: true
+            - name: tv
+              mountPath: /media/tv
+              readOnly: true
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: jellyfin-config-pvc
         - name: cache
           emptyDir: {}
-        - name: media
+        - name: tmp
+          emptyDir: {}
+        - name: movies
           hostPath:
-            path: /srv/media
+            path: /srv/media/movies
+            type: Directory
+        - name: tv
+          hostPath:
+            path: /srv/media/tv
             type: Directory

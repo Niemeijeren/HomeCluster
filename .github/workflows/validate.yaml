@@ -1,5 +1,9 @@
-# Catches broken manifests before Argo CD does: every kustomize folder must
-# build, and every resource (CRDs included) must match its schema.
+# Checks every push and PR: every kustomize folder must build, every resource
+# (CRDs included) must match its schema, the repo conventions in
+# scripts/check-policy.py must hold, and the Helm charts must render with our
+# values. On a live cluster this only DETECTS: Argo CD syncs main whatever CI
+# says. To block bad changes, protect main and merge through PRs.
+# Same checks locally: see scripts/check-policy.py.
 name: validate
 
 on:
@@ -23,6 +27,7 @@ jobs:
       # Pinned to a commit, not a tag: tags can be moved to malicious code.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Don't leave the job token in .git/config for later steps.
           persist-credentials: false
 
       - name: No plain Secrets in git
@@ -38,7 +43,9 @@ jobs:
           echo "${KUBECONFORM_SHA256}  kc.tgz" | sha256sum -c -
           sudo tar xzf kc.tgz -C /usr/local/bin kubeconform
 
-      - name: Build and validate
+      - name: Render
+        # One file, every document separated by ---. Without the separators
+        # YAML silently merges files and later keys win.
         run: |
           {
             for dir in infrastructure/* apps/*; do
@@ -49,6 +56,30 @@ jobs:
               cat "$f"
               echo ---
             done
-          } | kubeconform -strict -summary \
-                -schema-location default \
-                -schema-location "${CRDS_CATALOG}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
+          } > rendered.yaml
+
+      - name: Schemas
+        run: |
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location "${CRDS_CATALOG}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+            rendered.yaml
+
+      - name: PyYAML
+        run: |
+          python3 -c 'import yaml' 2>/dev/null \
+            || { sudo apt-get update -q && sudo apt-get install -y -q python3-yaml; }
+
+      - name: Conventions
+        run: python3 scripts/check-policy.py < rendered.yaml
+
+      # The charts are upstream code; this checks that our values render into
+      # valid objects (e.g. a typo in bootstrap/argocd-values.yaml).
+      # CustomResourceDefinitions have no schema in kubeconform's default set.
+      - name: Helm charts with our values
+        run: |
+          python3 scripts/render-charts.py > charts.yaml
+          kubeconform -strict -summary -skip CustomResourceDefinition \
+            -schema-location default \
+            -schema-location "${CRDS_CATALOG}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+            charts.yaml

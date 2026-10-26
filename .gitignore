@@ -6,3 +6,4 @@ sealing-key*.yaml
 .env
 # your local values for scripts/configure.sh
 config.env
+__pycache__/

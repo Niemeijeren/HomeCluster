@@ -37,7 +37,7 @@ Short records of the choices behind this cluster: the context, what was decided,
 
 ## 5. Backups: two tools for two kinds of data
 
-**Context.** There are two kinds of irreplaceable data: app state in PVCs (Jellyfin's library database, Portainer's settings), and personal files on a host disk (photos, documents). Velero only backs up volumes that belong to a PVC, so it can't see a `hostPath`.
+**Context.** There are two kinds of irreplaceable data: app state in PVCs (e.g. Jellyfin's library database), and personal files on a host disk (photos, documents). Velero only backs up volumes that belong to a PVC, so it can't see a `hostPath`.
 
 **Decision.**
 - **Velero** with file-system backup (Kopia uploader, node-agent DaemonSet) for PVCs. local-path has no CSI snapshot support, so file-system backup is the only option. It's opt-out per volume, so a new app is covered automatically.

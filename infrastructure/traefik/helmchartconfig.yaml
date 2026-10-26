@@ -21,3 +21,16 @@ spec:
     logs:
       access:
         enabled: true
+    # A LoadBalancer Service opens three ways in, each a DNAT that kube-proxy/
+    # flannel ACCEPT in FORWARD ahead of ufw: the LB IP, ServiceLB's hostPort on
+    # *every* node address (LAN 192.168.1.10 too), and a NodePort on every
+    # node address. klipper turns the source ranges into SRC_RANGES (hostPort)
+    # and kube-proxy applies them to the LB IP, so only the tailnet (and pods,
+    # for in-cluster calls to *.example.com) get in. Source ranges don't apply
+    # to NodePorts, so don't allocate any: klipper forwards to the ClusterIP.
+    service:
+      spec:
+        allocateLoadBalancerNodePorts: false
+        loadBalancerSourceRanges:
+          - 100.64.0.0/10
+          - 10.42.0.0/16
