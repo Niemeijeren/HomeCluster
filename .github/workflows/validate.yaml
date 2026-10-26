@@ -6,13 +6,24 @@ on:
   push:
   pull_request:
 
+# Public repo: anyone can open a PR. Keep the job token read-only.
+permissions:
+  contents: read
+
 jobs:
   manifests:
     runs-on: ubuntu-latest
     env:
       KUBECONFORM_VERSION: v0.6.7
+      # sha256 of kubeconform-linux-amd64.tar.gz, from the release's CHECKSUMS.
+      KUBECONFORM_SHA256: 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73
+      # CRD schemas, pinned to a commit so upstream changes can't flip results.
+      CRDS_CATALOG: https://raw.githubusercontent.com/datreeio/CRDs-catalog/3eb90d47aba8d61919d4419dd38301536e32a94b
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to a commit, not a tag: tags can be moved to malicious code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: No plain Secrets in git
         run: |
@@ -23,8 +34,9 @@ jobs:
 
       - name: Install kubeconform
         run: |
-          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar xz -C /usr/local/bin kubeconform
+          curl -sSfLo kc.tgz "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  kc.tgz" | sha256sum -c -
+          sudo tar xzf kc.tgz -C /usr/local/bin kubeconform
 
       - name: Build and validate
         run: |
@@ -39,4 +51,4 @@ jobs:
             done
           } | kubeconform -strict -summary \
                 -schema-location default \
-                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+                -schema-location "${CRDS_CATALOG}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
