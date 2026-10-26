@@ -1,0 +1,27 @@
+# Placeholder page until the real site (its own repo) ships an
+# image. Then this ConfigMap goes and deployment.yaml points at the GHCR image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: website-placeholder
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Coming soon</title>
+      <style>
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+               font-family: system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
+        p { color: #8a8f98; }
+      </style>
+    </head>
+    <body>
+      <main>
+        <h1>Coming soon</h1>
+        <p>Served from k3s, deployed by Argo CD.</p>
+      </main>
+    </body>
+    </html>

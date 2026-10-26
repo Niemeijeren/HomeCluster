@@ -43,3 +43,16 @@ Real problems from running this cluster, with the root cause and the fix.
 **Fix.** Rolled the key immediately and confirmed the old one was rejected. Secrets now go only through `scripts/seal-secrets.sh`, which reads them with a hidden prompt and pipes them straight into `kubeseal`, so the plaintext never touches disk or history.
 
 **Takeaway.** Assume a leaked secret is compromised. Rotate it first, then work out how it leaked.
+
+## The first restore drill
+
+**Why.** Backups had reported `Completed` every night, but that only proves the upload worked. Nobody had shown the data could come back.
+
+**What I did.** I restored Portainer from last night's Velero backup into a scratch namespace (`namespaceMapping: {portainer: portainer-restore-test}`), next to the live app. All volume bytes came back. The restored Portainer reported that its admin user existed (`/api/users/admin/check` → 204), which proves it was the real data and not a fresh install. Then I deleted the scratch namespace.
+
+**Gotchas.**
+- **Exclude Ingresses and cert-manager objects** (`excludedResources`) when restoring next to a live app. Otherwise the copy claims the same hostname, and cert-manager requests a duplicate certificate.
+- **Argo CD leaves the copies alone.** Its annotation-based resource tracking includes the namespace, so objects restored under a different namespace don't match any Application and aren't pruned or "healed".
+- Velero logged one harmless warning (`Failed to get nodeOS for node ''`). It looks up the pod's node before the pod has been scheduled.
+
+**Takeaway.** A backup you haven't restored is a hope, not a backup. Run the drill before you need it, and repeat it after big changes.
